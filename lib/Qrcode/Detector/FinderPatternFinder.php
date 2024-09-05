@@ -95,7 +95,7 @@ class FinderPatternFinder
 					if (($currentState & 1) == 0) { // Counting black pixels
 						if ($currentState == 4) { // A winner?
 							if (self::foundPatternCross($stateCount, $maxVariance)) { // Yes
-								$confirmed = $this->handlePossibleCenter($stateCount, $i, $j, $pureBarcode);
+								$confirmed = $this->handlePossibleCenter($stateCount, $i, $j, $pureBarcode, $maxVariance);
 								if ($confirmed) {
 									// Start examining every other line. Checking each line turned out to be too
 									// expensive and didn't improve performance.
@@ -216,21 +216,22 @@ class FinderPatternFinder
 	 * @param int $i row           where finder pattern may be found
 	 * @param int $j end           of possible finder pattern in row
 	 * @param bool $pureBarcode true if in "pure barcode" mode
+	 * @param float $maxVariance Tolerance for variance of 1/1/3/1/1 ratio
 	 *
 	 * @return bool if a finder pattern candidate was found this time
 	 */
-	final protected function handlePossibleCenter($stateCount, int $i, int $j, bool $pureBarcode): bool
+	final protected function handlePossibleCenter($stateCount, int $i, int $j, bool $pureBarcode, float $maxVariance = 0.5): bool
 	{
 		$stateCountTotal = $stateCount[0] + $stateCount[1] + $stateCount[2] + $stateCount[3] +
 			$stateCount[4];
 		$centerJ = self::centerFromEnd($stateCount, $j);
-		$centerI = $this->crossCheckVertical($i, (int)($centerJ), $stateCount[2], $stateCountTotal);
+		$centerI = $this->crossCheckVertical($i, (int)($centerJ), $stateCount[2], $stateCountTotal, $maxVariance);
 		if (!is_nan($centerI)) {
 			// Re-cross check
-			$centerJ = $this->crossCheckHorizontal((int)($centerJ), (int)($centerI), $stateCount[2], $stateCountTotal);
+			$centerJ = $this->crossCheckHorizontal((int)($centerJ), (int)($centerI), $stateCount[2], $stateCountTotal, $maxVariance);
 			if (
 				!is_nan($centerJ) &&
-				(!$pureBarcode || $this->crossCheckDiagonal((int)($centerI), (int)($centerJ), $stateCount[2], $stateCountTotal))
+				(!$pureBarcode || $this->crossCheckDiagonal((int)($centerI), (int)($centerJ), $stateCount[2], $stateCountTotal, $maxVariance))
 			) {
 				$estimatedModuleSize = (float)$stateCountTotal / 7.0;
 				$found = false;
@@ -276,6 +277,7 @@ class FinderPatternFinder
 	 * @param int $centerJ   ; center of the section that appears to cross a finder pattern
 	 * @param int $maxCount ; maximum reasonable number of modules that should be
 	 *                  observed in any reading state, based on the results of the horizontal scan
+	 * @param float $maxVariance Tolerance for variance of 1/1/3/1/1 ratio
 	 *
 	 * @return float vertical center of finder pattern, or {@link Float#NaN} if not found
 	 */
@@ -283,7 +285,8 @@ class FinderPatternFinder
 		int $startI,
 		int $centerJ,
 		int $maxCount,
-		int|float $originalStateCountTotal
+		int|float $originalStateCountTotal,
+		float $maxVariance = 0.5
 	) {
 		$image = $this->image;
 
@@ -347,7 +350,7 @@ class FinderPatternFinder
 			return NAN;
 		}
 
-		return self::foundPatternCross($stateCount) ? self::centerFromEnd($stateCount, $i) : NAN;
+		return self::foundPatternCross($stateCount, $maxVariance) ? self::centerFromEnd($stateCount, $i) : NAN;
 	}
 
 	private function getCrossCheckStateCount()
@@ -370,7 +373,8 @@ class FinderPatternFinder
 		int $startJ,
 		int $centerI,
 		int $maxCount,
-		int|float $originalStateCountTotal
+		int|float $originalStateCountTotal,
+		float $maxVariance = 0.5
 	) {
 		$image = $this->image;
 
@@ -431,7 +435,7 @@ class FinderPatternFinder
 			return NAN;
 		}
 
-		return static::foundPatternCross($stateCount) ? self::centerFromEnd($stateCount, $j) : NAN;
+		return static::foundPatternCross($stateCount, $maxVariance) ? self::centerFromEnd($stateCount, $j) : NAN;
 	}
 
 	/**
@@ -444,10 +448,11 @@ class FinderPatternFinder
 	 * @param $maxCount               ; maximum reasonable number of modules that should be
 	 *                                observed in any reading state, based on the results of the horizontal scan
 	 * @param $originalStateCountTotal ; The original state count total.
+	 * @param float $maxVariance Tolerance for variance of 1/1/3/1/1 ratio
 	 *
 	 * @return bool if proportions are withing expected limits
 	 */
-	private function crossCheckDiagonal(int $startI, int $centerJ, $maxCount, int|float $originalStateCountTotal): bool
+	private function crossCheckDiagonal(int $startI, int $centerJ, $maxCount, int|float $originalStateCountTotal, float $maxVariance = 0.5): bool
 	{
 		$stateCount = $this->getCrossCheckStateCount();
 
@@ -533,7 +538,7 @@ class FinderPatternFinder
 
 		return
 			abs($stateCountTotal - $originalStateCountTotal) < 2 * $originalStateCountTotal &&
-			self::foundPatternCross($stateCount);
+			self::foundPatternCross($stateCount, $maxVariance);
 	}
 
 	/**
